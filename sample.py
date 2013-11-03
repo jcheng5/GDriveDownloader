@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) 2013 Google Inc.
@@ -48,12 +49,11 @@ parser = argparse.ArgumentParser(
 parser.add_argument("gdrive_path")
 parser.add_argument("dest_path")
 
-
 # CLIENT_SECRETS is name of a file containing the OAuth 2.0 information for this
 # application, including client_id and client_secret. You can see the Client ID
 # and Client secret on the APIs page in the Cloud Console:
 # <https://cloud.google.com/console#/project/751827116087/apiui>
-CLIENT_SECRETS = os.path.join(os.path.dirname(__file__), 'client_secrets.json')
+CLIENT_SECRETS = '/etc/gget/client_secrets.json'
 
 # Set up a Flow object to be used for authentication.
 # Add one or more of the following scopes. PLEASE ONLY ADD THE SCOPES YOU
@@ -79,7 +79,10 @@ def main(argv):
   # If the credentials don't exist or are invalid run through the native client
   # flow. The Storage object will ensure that if successful the good
   # credentials will get written back to the file.
-  storage = file.Storage('sample.dat')
+  configdir = os.path.expanduser('~/.gget')
+  if not os.path.exists(configdir):
+    os.makedirs(configdir, 0700)
+  storage = file.Storage(os.path.join(configdir, 'auth.dat'))
   credentials = storage.get()
   if credentials is None or credentials.invalid:
     credentials = tools.run_flow(FLOW, storage, flags)
