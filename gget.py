@@ -96,13 +96,6 @@ def main(argv):
   drive = discovery.build('drive', 'v2', http=http)
 
   try:
-    #files = drive.files()
-    #request = files.list(q="'root' in parents", fields="items/title")
-    #while ( request != None ):
-    #  fileData = request.execute()
-    #  for item in fileData['items']:
-    #    print item['title']
-    #  request = files.list_next(request, fileData)
     for item in ls(drive, flags.gdrive_path):
       download(drive, item["id"], flags.dest_path, item)
 
