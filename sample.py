@@ -28,6 +28,7 @@ by running:
 import argparse
 import httplib2
 import os
+import re
 import sys
 
 from apiclient import discovery
@@ -54,13 +55,13 @@ CLIENT_SECRETS = os.path.join(os.path.dirname(__file__), 'client_secrets.json')
 # <https://developers.google.com/+/best-practices>.
 FLOW = client.flow_from_clientsecrets(CLIENT_SECRETS,
   scope=[
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/drive.appdata',
-      'https://www.googleapis.com/auth/drive.apps.readonly',
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/drive.metadata.readonly',
+      #'https://www.googleapis.com/auth/drive',
+      #'https://www.googleapis.com/auth/drive.appdata',
+      #'https://www.googleapis.com/auth/drive.apps.readonly',
+      #'https://www.googleapis.com/auth/drive.file',
+      #'https://www.googleapis.com/auth/drive.metadata.readonly',
       'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/drive.scripts',
+      #'https://www.googleapis.com/auth/drive.scripts',
     ],
     message=tools.message_if_missing(CLIENT_SECRETS))
 
@@ -83,15 +84,60 @@ def main(argv):
   http = credentials.authorize(http)
 
   # Construct the service object for the interacting with the Drive API.
-  service = discovery.build('drive', 'v2', http=http)
+  drive = discovery.build('drive', 'v2', http=http)
 
   try:
-    print "Success! Now add code here."
+    files = drive.files()
+    request = files.list(q="'root' in parents", fields="items/title")
+    #while ( request != None ):
+    #  fileData = request.execute()
+    #  for item in fileData['items']:
+    #    print item['title']
+    #  request = files.list_next(request, fileData)
+    print ls(drive, '/*')
 
   except client.AccessTokenRefreshError:
     print ("The credentials have been revoked or expired, please re-run"
       "the application to re-authorize")
 
+def ls(drive, path, base = "root"):
+  pathParts = [x for x in path.split("/") if x != ""]
+  if len(pathParts) == 0:
+    # We're already there
+    return get_by_id(drive, base)
+  elif len(pathParts) == 1:
+    # The last part can be a name or glob
+    return get_by_name(drive, pathParts[0], base, True)
+  else:
+    # Navigate and recurse
+    name = pathParts[0]
+    del pathParts[0]
+    folders = get_by_name(drive, name, base, False)
+    if len(folders) == 0:
+      return []
+    folder = folders[0]
+    if folder['mimeType'] != "application/vnd.google-apps.folder":
+      return []
+    return ls(drive, "/".join(pathParts), folder['id'])
+
+def get_by_name(drive, name, base = "root", allowGlob = False):
+  q = "'%s' in parents" % base
+  if (not allowGlob) or name.find("*") < 0:
+    q += " and title = '%s'" % name.replace("'", r"\'")
+    pattern = "^" + re.escape(name) + "$"
+  else:
+    pattern = "^" + ".*".join([re.escape(x) for x in name.split("*")]) + "$"
+  items = []
+  request = drive.files().list(q = q)
+  while ( request != None ):
+    response = request.execute()
+    items = items + response['items']
+    request = drive.files().list_next(request, response)
+  return [x for x in items if re.match(pattern, x['title']) != None]
+
+def get_by_id(drive, id):
+  request = drive.files().get(fileId = id)
+  return request.execute()
 
 # For more information on the Drive API you can visit:
 #
