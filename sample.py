@@ -36,11 +36,17 @@ from oauth2client import file
 from oauth2client import client
 from oauth2client import tools
 
+import pprint
+
+pp = pprint.PrettyPrinter(indent = 2)
+
 # Parser for command-line arguments.
 parser = argparse.ArgumentParser(
     description=__doc__,
     formatter_class=argparse.RawDescriptionHelpFormatter,
     parents=[tools.argparser])
+parser.add_argument("gdrive_path")
+parser.add_argument("dest_path")
 
 
 # CLIENT_SECRETS is name of a file containing the OAuth 2.0 information for this
@@ -87,14 +93,15 @@ def main(argv):
   drive = discovery.build('drive', 'v2', http=http)
 
   try:
-    files = drive.files()
-    request = files.list(q="'root' in parents", fields="items/title")
+    #files = drive.files()
+    #request = files.list(q="'root' in parents", fields="items/title")
     #while ( request != None ):
     #  fileData = request.execute()
     #  for item in fileData['items']:
     #    print item['title']
     #  request = files.list_next(request, fileData)
-    print ls(drive, '/*')
+    for item in ls(drive, flags.gdrive_path):
+      download(drive, item["id"], flags.dest_path, item)
 
   except client.AccessTokenRefreshError:
     print ("The credentials have been revoked or expired, please re-run"
@@ -121,7 +128,7 @@ def ls(drive, path, base = "root"):
     return ls(drive, "/".join(pathParts), folder['id'])
 
 def get_by_name(drive, name, base = "root", allowGlob = False):
-  q = "'%s' in parents" % base
+  q = "'%s' in parents and trashed = false" % base
   if (not allowGlob) or name.find("*") < 0:
     q += " and title = '%s'" % name.replace("'", r"\'")
     pattern = "^" + re.escape(name) + "$"
@@ -133,11 +140,41 @@ def get_by_name(drive, name, base = "root", allowGlob = False):
     response = request.execute()
     items = items + response['items']
     request = drive.files().list_next(request, response)
-  return [x for x in items if re.match(pattern, x['title']) != None]
+  return sort_by_title([x for x in items if re.match(pattern, x['title']) != None])
 
 def get_by_id(drive, id):
   request = drive.files().get(fileId = id)
   return request.execute()
+
+def download(drive, id, destdir, gdrive_file = None, indent = ""):
+  if gdrive_file == None:
+    gdrive_file = get_by_id(drive, id)
+  destpath = os.path.join(destdir, gdrive_file["title"])
+  if gdrive_file["mimeType"] == "application/vnd.google-apps.folder":
+    print(indent + gdrive_file["title"] + "/")
+    if not os.path.exists(destpath):
+      os.mkdir(destpath)
+    for child in ls(drive, "*", gdrive_file["id"]):
+      download(drive, child["id"], destpath, child, indent + "  ")
+  else:
+    print("%s%s (%s)" % (indent, gdrive_file["title"], sizeof_fmt(int(gdrive_file["fileSize"]))))
+    url = gdrive_file["downloadUrl"]
+    resp, content = drive._http.request(url)
+    if resp.status != 200:
+      raise Exception("Error downloading %s: %s" % (gdrive_file["title"], resp))
+    else:
+      with open(destpath, 'wb') as f:
+        f.write(content)
+
+def sizeof_fmt(num):
+  for x in ['bytes','KB','MB','GB']:
+    if num < 1024.0 and num > -1024.0:
+      return "%3.1f%s" % (num, x)
+    num /= 1024.0
+  return "%3.1f%s" % (num, 'TB')
+
+def sort_by_title(files):
+  return sorted(files, key = lambda f: f["title"])
 
 # For more information on the Drive API you can visit:
 #
